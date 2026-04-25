@@ -66,12 +66,7 @@ async fn create_room(
         );
     }
 
-    let room_id = Uuid::new_v4()
-        .to_string()
-        .split('-')
-        .next()
-        .unwrap_or("room")
-        .to_string();
+    let room_id = Uuid::new_v4().to_string()[..4].to_uppercase();
 
     sqlx::query("INSERT INTO rooms (room_id, unit_size, unit_goal) VALUES ($1, $2, $3)")
         .bind(&room_id)
@@ -143,20 +138,17 @@ async fn join_room(
         );
     }
 
-    let name_taken: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM players WHERE room_id = $1 AND username = $2)",
+    let existing = sqlx::query_as::<_, PlayerScore>(
+        "SELECT username, score FROM players WHERE room_id = $1 AND username = $2",
     )
     .bind(&room_id)
     .bind(&body.username)
-    .fetch_one(&pool)
+    .fetch_optional(&pool)
     .await
     .unwrap();
 
-    if name_taken {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "username already taken in this room"})),
-        );
+    if let Some(player) = existing {
+        return (StatusCode::OK, Json(serde_json::json!(player)));
     }
 
     sqlx::query("INSERT INTO players (room_id, username, score) VALUES ($1, $2, 0.0)")
@@ -205,9 +197,9 @@ async fn add_drink(
 
     let delta = body.unit_size / room.unit_size;
 
-    let updated = sqlx::query_as::<_, PlayerScore>(
+    let rows = sqlx::query_scalar::<_, i64>(
         "UPDATE players SET score = score + $1 WHERE room_id = $2 AND username = $3
-         RETURNING username, score",
+         RETURNING 1",
     )
     .bind(delta)
     .bind(&room_id)
@@ -216,14 +208,30 @@ async fn add_drink(
     .await
     .unwrap();
 
-    let Some(player) = updated else {
+    if rows.is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "player not found"})),
         );
-    };
+    }
 
-    (StatusCode::OK, Json(serde_json::json!(player)))
+    let players = sqlx::query_as::<_, PlayerScore>(
+        "SELECT username, score FROM players WHERE room_id = $1 ORDER BY score DESC",
+    )
+    .bind(&room_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!(RoomState {
+            room_id: room.room_id,
+            unit_size: room.unit_size,
+            unit_goal: room.unit_goal,
+            players,
+        })),
+    )
 }
 
 // DELETE /rooms/:room_id/players/:username/drink
@@ -256,9 +264,9 @@ async fn undo_drink(
 
     let delta = body.unit_size / room.unit_size;
 
-    let updated = sqlx::query_as::<_, PlayerScore>(
+    let rows = sqlx::query_scalar::<_, i64>(
         "UPDATE players SET score = GREATEST(score - $1, 0) WHERE room_id = $2 AND username = $3
-         RETURNING username, score",
+         RETURNING 1",
     )
     .bind(delta)
     .bind(&room_id)
@@ -267,12 +275,28 @@ async fn undo_drink(
     .await
     .unwrap();
 
-    let Some(player) = updated else {
+    if rows.is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "player not found"})),
         );
-    };
+    }
 
-    (StatusCode::OK, Json(serde_json::json!(player)))
+    let players = sqlx::query_as::<_, PlayerScore>(
+        "SELECT username, score FROM players WHERE room_id = $1 ORDER BY score DESC",
+    )
+    .bind(&room_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!(RoomState {
+            room_id: room.room_id,
+            unit_size: room.unit_size,
+            unit_goal: room.unit_goal,
+            players,
+        })),
+    )
 }
