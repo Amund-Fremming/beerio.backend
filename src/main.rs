@@ -1,6 +1,7 @@
 use axum::Router;
 use dotenvy::dotenv;
 use std::env;
+use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod db;
@@ -25,7 +26,12 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let app: Router = handlers::router().with_state(pool);
+    let cors = CorsLayer::new()
+        .allow_origin("https://industrious-radiance-production-97c0.up.railway.app".parse::<axum::http::HeaderValue>().unwrap())
+        .allow_methods(AllowMethods::any())
+        .allow_headers(AllowHeaders::any());
+
+    let app: Router = handlers::router().with_state(pool).layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::info!("Listening on http://0.0.0.0:3000");
