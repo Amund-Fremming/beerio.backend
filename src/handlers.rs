@@ -180,13 +180,22 @@ async fn add_drink(
         );
     }
 
-    let room = sqlx::query_as::<_, RoomRow>(
+    let room = match sqlx::query_as::<_, RoomRow>(
         "SELECT room_id, unit_size, unit_goal FROM rooms WHERE room_id = $1",
     )
     .bind(&room_id)
     .fetch_optional(&pool)
     .await
-    .unwrap();
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("DB error fetching room: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
     let Some(room) = room else {
         return (
@@ -197,31 +206,49 @@ async fn add_drink(
 
     let delta = body.unit_size / room.unit_size;
 
-    let rows = sqlx::query_scalar::<_, i64>(
+    let updated = match sqlx::query_scalar::<_, f64>(
         "UPDATE players SET score = score + $1 WHERE room_id = $2 AND username = $3
-         RETURNING 1",
+         RETURNING score",
     )
     .bind(delta)
     .bind(&room_id)
     .bind(&username)
     .fetch_optional(&pool)
     .await
-    .unwrap();
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("DB error updating score: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
-    if rows.is_none() {
+    if updated.is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "player not found"})),
         );
     }
 
-    let players = sqlx::query_as::<_, PlayerScore>(
+    let players = match sqlx::query_as::<_, PlayerScore>(
         "SELECT username, score FROM players WHERE room_id = $1 ORDER BY score DESC",
     )
     .bind(&room_id)
     .fetch_all(&pool)
     .await
-    .unwrap();
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("DB error fetching players: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
     (
         StatusCode::OK,
@@ -247,13 +274,22 @@ async fn undo_drink(
         );
     }
 
-    let room = sqlx::query_as::<_, RoomRow>(
+    let room = match sqlx::query_as::<_, RoomRow>(
         "SELECT room_id, unit_size, unit_goal FROM rooms WHERE room_id = $1",
     )
     .bind(&room_id)
     .fetch_optional(&pool)
     .await
-    .unwrap();
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("DB error fetching room: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
     let Some(room) = room else {
         return (
@@ -264,31 +300,49 @@ async fn undo_drink(
 
     let delta = body.unit_size / room.unit_size;
 
-    let rows = sqlx::query_scalar::<_, i64>(
+    let updated = match sqlx::query_scalar::<_, f64>(
         "UPDATE players SET score = GREATEST(score - $1, 0) WHERE room_id = $2 AND username = $3
-         RETURNING 1",
+         RETURNING score",
     )
     .bind(delta)
     .bind(&room_id)
     .bind(&username)
     .fetch_optional(&pool)
     .await
-    .unwrap();
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("DB error updating score: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
-    if rows.is_none() {
+    if updated.is_none() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "player not found"})),
         );
     }
 
-    let players = sqlx::query_as::<_, PlayerScore>(
+    let players = match sqlx::query_as::<_, PlayerScore>(
         "SELECT username, score FROM players WHERE room_id = $1 ORDER BY score DESC",
     )
     .bind(&room_id)
     .fetch_all(&pool)
     .await
-    .unwrap();
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("DB error fetching players: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            );
+        }
+    };
 
     (
         StatusCode::OK,
