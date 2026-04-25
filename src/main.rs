@@ -1,7 +1,7 @@
 use axum::Router;
 use dotenvy::dotenv;
 use std::env;
-use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod db;
@@ -27,11 +27,7 @@ async fn main() {
         .expect("Failed to run migrations");
 
     let cors = CorsLayer::new()
-        .allow_origin(
-            "https://industrious-radiance-production-97c0.up.railway.app"
-                .parse::<axum::http::HeaderValue>()
-                .unwrap(),
-        )
+        .allow_origin(AllowOrigin::any())
         .allow_methods(AllowMethods::any())
         .allow_headers(AllowHeaders::any());
 
