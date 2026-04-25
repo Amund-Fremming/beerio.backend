@@ -27,7 +27,11 @@ async fn main() {
         .expect("Failed to run migrations");
 
     let cors = CorsLayer::new()
-        .allow_origin("https://industrious-radiance-production-97c0.up.railway.app".parse::<axum::http::HeaderValue>().unwrap())
+        .allow_origin(
+            "https://industrious-radiance-production-97c0.up.railway.app"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+        )
         .allow_methods(AllowMethods::any())
         .allow_headers(AllowHeaders::any());
 
