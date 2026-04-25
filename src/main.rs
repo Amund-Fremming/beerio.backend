@@ -35,7 +35,8 @@ async fn main() {
         .allow_methods(AllowMethods::any())
         .allow_headers(AllowHeaders::any());
 
-    let app: Router = handlers::router().with_state(pool).layer(cors);
+    let api = handlers::router().with_state(pool);
+    let app: Router = Router::new().nest("/api", api).layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::info!("Listening on http://0.0.0.0:3000");
