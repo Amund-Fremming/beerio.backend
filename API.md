@@ -180,6 +180,41 @@ Record a drink (enhet) for a player.
 
 ---
 
+### `DELETE /rooms/:room_id/players/:username/drink`
+
+Undo a drink for a player (decrements score). Score will not go below `0`.
+
+**Path Params**
+| Param | Type | Description |
+|-------|------|-------------|
+| `room_id` | string | The unique room ID |
+| `username` | string | The player's username |
+
+**Request Body**
+
+```json
+{
+  "unit_size": 0.5 // float — size of the drink to undo (0.33 or 0.5)
+}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "username": "Alice",
+  "score": 2.0 // updated total score in units
+}
+```
+
+**Errors**
+| Status | Reason |
+|--------|--------|
+| `400` | Invalid `unit_size` |
+| `404` | Room or player not found |
+
+---
+
 ## Database Schema
 
 ```sql

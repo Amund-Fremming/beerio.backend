@@ -20,10 +20,14 @@ async fn main() {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = db::create_pool(&database_url).await;
 
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
+
     let app: Router = handlers::router().with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::info!("Listening on http://0.0.0.0:3000");
     axum::serve(listener, app).await.unwrap();
 }
-

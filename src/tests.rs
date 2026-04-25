@@ -10,8 +10,14 @@ async fn test_server() -> (TestServer, PgPool) {
     let pool = create_pool(&url).await;
 
     // Clean state
-    sqlx::query("DELETE FROM players").execute(&pool).await.unwrap();
-    sqlx::query("DELETE FROM rooms").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM players")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM rooms")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let app = router().with_state(pool.clone());
     let server = TestServer::new(app).unwrap();

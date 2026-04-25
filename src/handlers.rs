@@ -1,10 +1,9 @@
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -21,7 +20,10 @@ pub fn router() -> Router<PgPool> {
         .route("/rooms", post(create_room))
         .route("/rooms/:room_id", get(get_room))
         .route("/rooms/:room_id/join", post(join_room))
-        .route("/rooms/:room_id/players/:username/drink", post(add_drink))
+        .route(
+            "/rooms/:room_id/players/:username/drink",
+            post(add_drink).delete(undo_drink),
+        )
 }
 
 // GET /health
@@ -86,10 +88,7 @@ async fn create_room(
 }
 
 // GET /rooms/:room_id
-async fn get_room(
-    State(pool): State<PgPool>,
-    Path(room_id): Path<String>,
-) -> impl IntoResponse {
+async fn get_room(State(pool): State<PgPool>, Path(room_id): Path<String>) -> impl IntoResponse {
     let room = sqlx::query_as::<_, RoomRow>(
         "SELECT room_id, unit_size, unit_goal FROM rooms WHERE room_id = $1",
     )
@@ -208,6 +207,57 @@ async fn add_drink(
 
     let updated = sqlx::query_as::<_, PlayerScore>(
         "UPDATE players SET score = score + $1 WHERE room_id = $2 AND username = $3
+         RETURNING username, score",
+    )
+    .bind(delta)
+    .bind(&room_id)
+    .bind(&username)
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+
+    let Some(player) = updated else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "player not found"})),
+        );
+    };
+
+    (StatusCode::OK, Json(serde_json::json!(player)))
+}
+
+// DELETE /rooms/:room_id/players/:username/drink
+async fn undo_drink(
+    State(pool): State<PgPool>,
+    Path((room_id, username)): Path<(String, String)>,
+    Json(body): Json<DrinkRequest>,
+) -> impl IntoResponse {
+    if body.unit_size != 0.33 && body.unit_size != 0.5 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "unit_size must be 0.33 or 0.5"})),
+        );
+    }
+
+    let room = sqlx::query_as::<_, RoomRow>(
+        "SELECT room_id, unit_size, unit_goal FROM rooms WHERE room_id = $1",
+    )
+    .bind(&room_id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+
+    let Some(room) = room else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "room not found"})),
+        );
+    };
+
+    let delta = body.unit_size / room.unit_size;
+
+    let updated = sqlx::query_as::<_, PlayerScore>(
+        "UPDATE players SET score = GREATEST(score - $1, 0) WHERE room_id = $2 AND username = $3
          RETURNING username, score",
     )
     .bind(delta)
