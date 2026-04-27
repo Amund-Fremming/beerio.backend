@@ -26,6 +26,30 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
+    // Cleanup job: every hour delete rooms that have been inactive for 48+ hours.
+    // Players are removed automatically via ON DELETE CASCADE.
+    tokio::spawn({
+        let pool = pool.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+            loop {
+                interval.tick().await;
+                match sqlx::query(
+                    "DELETE FROM rooms WHERE updated_at < NOW() - INTERVAL '48 hours'",
+                )
+                .execute(&pool)
+                .await
+                {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::info!("Cleanup: removed {} inactive room(s)", r.rows_affected());
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::error!("Cleanup job error: {e}"),
+                }
+            }
+        }
+    });
+
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::any())
         .allow_methods(AllowMethods::any())
